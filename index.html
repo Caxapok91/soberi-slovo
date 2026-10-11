@@ -1,0 +1,166 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#3b1e6e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Собери слово</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= МЕНЮ ================= -->
+  <section class="screen screen--menu" id="screen-menu">
+    <div class="menu-box">
+      <h1 class="logo"><span>Собери</span><span class="logo__word">слово</span></h1>
+      <p class="logo__tag">Набирай слова буквами на круге</p>
+
+      <div class="coin-badge coin-badge--big"><span class="coin-badge__icon">★</span><span id="menu-coins">0</span></div>
+
+      <button class="btn btn--primary" id="btn-play">Играть</button>
+      <button class="btn btn--ghost" id="btn-new">Новый уровень</button>
+      <div class="menu-row">
+        <button class="btn btn--chip" id="btn-difficulty">Сложность: <b id="menu-diff">Средняя</b></button>
+        <button class="btn btn--chip" id="btn-how">Как играть</button>
+      </div>
+      <button class="btn btn--link" id="btn-reset">Сбросить прогресс</button>
+    </div>
+  </section>
+
+  <!-- ================= ИГРА ================= -->
+  <section class="screen screen--game" id="screen-game">
+
+    <header class="topbar">
+      <div class="topbar__side">
+        <button class="rnd-btn" id="btn-menu" aria-label="В меню">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <button class="rnd-btn" id="btn-rules" aria-label="Правила">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        </button>
+      </div>
+
+      <div class="level-chip">Уровень: <b id="hud-level">1</b></div>
+
+      <div class="coin-badge">
+        <span class="coin-badge__icon">★</span><span id="hud-coins">0</span>
+      </div>
+    </header>
+
+    <div class="status">
+      <div class="combo">Комбо: <b id="hud-combo">0</b> · Бонусы: <b id="side-extra-total">0</b></div>
+      <div class="progress"><div class="progress__bar" id="progress-bar"></div></div>
+    </div>
+
+    <div class="play-area">
+      <!-- Сбоку: задания и уже найденные бонусные слова -->
+      <aside class="side" id="side-words"></aside>
+      <button class="side__toggle" id="btn-side" aria-label="Показать список слов"></button>
+
+      <!-- ПУСТОЙ КРОССВОРД: сюда встают найденные слова -->
+      <div class="crossword-area">
+        <div class="crossword" id="crossword"></div>
+        <div class="ribbon" id="ribbon"><span id="ribbon-text">Слово!</span></div>
+      </div>
+    </div>
+
+    <!-- Набранное слово: слотов столько, сколько букв в самом коротком задании -->
+    <div class="wordbar">
+      <div class="wordbar__slots" id="wordbar"></div>
+      <button class="wordbar__btn" id="btn-erase" aria-label="Стереть букву">⌫</button>
+    </div>
+
+    <!-- КОЛЕСО С БУКВАМИ -->
+    <div class="wheel-area">
+      <div class="wheel" id="wheel"></div>
+    </div>
+
+    <footer class="round-row">
+      <div class="action">
+        <button class="rnd-btn rnd-btn--big" id="btn-hint" aria-label="Подсказка буква">
+          <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></svg>
+        </button>
+        <span class="action__label">Буква <span id="hint-cost">50</span>★</span>
+      </div>
+      <div class="action">
+        <button class="rnd-btn rnd-btn--big" id="btn-solve" aria-label="Подсказка слово">
+          <svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9z"/></svg>
+        </button>
+        <span class="action__label">Слово <span id="solve-cost">150</span>★</span>
+      </div>
+      <div class="action">
+        <button class="rnd-btn rnd-btn--big" id="btn-sound" aria-label="Звук">
+          <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM17 9a4 4 0 0 1 0 6"/></svg>
+        </button>
+        <span class="action__label">Звук</span>
+      </div>
+    </footer>
+  </section>
+
+  <!-- ================= ПОБЕДА ================= -->
+  <section class="screen screen--win" id="screen-win">
+    <div class="win-box">
+      <div class="win-box__stars" id="win-stars">★★★</div>
+      <h2>Кроссворд собран!</h2>
+      <div class="win-stats">
+        <div class="win-stat"><b id="win-level">1</b><span>уровень</span></div>
+        <div class="win-stat"><b id="win-coins">+0</b><span>монет</span></div>
+        <div class="win-stat"><b id="win-words">0</b><span>слов</span></div>
+        <div class="win-stat"><b id="win-extra">0</b><span>бонусов</span></div>
+      </div>
+      <button class="btn btn--primary" id="btn-next">Дальше</button>
+      <button class="btn btn--link" id="btn-win-menu">В меню</button>
+    </div>
+  </section>
+
+  <!-- ================= ОВЕРЛЕИ ================= -->
+  <div class="modal" id="modal-diff" hidden>
+    <div class="modal__box">
+      <h3>Сложность</h3>
+      <button class="diff" data-diff="easy">Легко<span>4 слова по 3–4 буквы</span></button>
+      <button class="diff" data-diff="normal">Средняя<span>5 слов по 4–5 букв</span></button>
+      <button class="diff" data-diff="hard">Сложно<span>6 слов по 5–8 букв</span></button>
+      <button class="btn btn--ghost" data-close>Закрыть</button>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-how" hidden>
+    <div class="modal__box">
+      <h3>Как играть</h3>
+      <ul class="how">
+        <li>Сверху — пустой кроссворд. Сколько клеток в ряду, столько букв в слове.</li>
+        <li>Слева — только <b>бонусы</b>: слова из тех же букв, что ты уже нашёл.</li>
+        <li>Снизу круг с буквами. Тапай по ним — буквы складываются в слово.</li>
+        <li>Слотов столько, сколько букв в самом коротком задании.</li>
+        <li>Слово совпало — сразу встаёт в кроссворд.</li>
+        <li>Из тех же букв можно собрать другие слова — они идут в «Бонусы» слева.</li>
+        <li><b>Буква</b> — первая буква ненайденного слова.</li>
+        <li><b>Слово</b> — целиком показывает одно из заданий.</li>
+        <li><b>Звук</b> — включить/выключить звук.</li>
+      </ul>
+      <button class="btn btn--primary" data-close>Понятно</button>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-daily" hidden>
+    <div class="modal__box modal__box--daily">
+      <div class="gift">🎁</div>
+      <h3>Ежедневный подарок</h3>
+      <div class="coin-badge coin-badge--big"><span class="coin-badge__icon">★</span><span id="daily-amount">50</span></div>
+      <button class="btn btn--primary" id="btn-daily-claim">Забрать</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="js/words.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
