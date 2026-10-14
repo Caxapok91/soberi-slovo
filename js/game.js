@@ -95,7 +95,9 @@ function persist() {
 
 const state = {
   words: [],        // все слова уровня
-  rows: [],         // раскладка кроссворда
+  grid: [],         // сетка кроссворда: буква или null
+  owners: [],       // какие слова проходят через клетку
+  rows: 0,
   cols: 0,
   found: new Set(), // найденные задания
   extras: [],       // бонусные слова из тех же букв
@@ -104,6 +106,11 @@ const state = {
   combo: 0,
   hintsUsed: 0,
   sideOpen: true,   // показывать ли список слов сбоку
+  won: false,       // уровень собран целиком
+  hintBusy: false,  // подсказка-буква ещё «дописывается»
+  solveBusy: false, // слово ещё вписывается
+  justFound: null,  // слово, только что открытое (для анимации)
+  lastHints: 0,  // сколько букв открылось в других словах
 };
 
 /* ---------------- Экраны ---------------- */
@@ -117,40 +124,58 @@ const closeModal = (sel) => { $(sel).hidden = true; };
 
 /* ---------------- Рендер кроссворда ---------------- */
 
-/** Собираем кроссворд заново: пустые клетки + найденные слова. */
+/**
+ * Собираем сетку заново.
+ *
+ * Буква в клетке появляется, если клетку пересекает уже найденное
+ * слово — даже если само это слово ещё не найдено. Вот и подсказка:
+ * отгадал одно слово, в другом открылась буква.
+ */
 function rebuildCrossword() {
   const box = $('#crossword');
   box.innerHTML = '';
 
-  for (const row of state.rows) {
-    const el = document.createElement('div');
-    el.className = 'cw-row' + (state.found.has(row.word) ? ' is-done' : '');
-    el.dataset.word = row.word;
+  const fresh = new Set();          // буквы, открывшиеся только что
 
-    const lead = row.cells.filter((c) => c === null).length;
-    for (let k = 0; k < lead; k++) {
-      const b = document.createElement('div');
-      b.className = 'cw-cell cw-cell--block';
-      el.appendChild(b);
+  for (let r = 0; r < state.rows; r++) {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'cw-row';
+
+    for (let c = 0; c < state.cols; c++) {
+      const ch = state.grid[r][c];
+      const cell = document.createElement('div');
+
+      if (!ch) {
+        cell.className = 'cw-cell cw-cell--void';
+        rowEl.appendChild(cell);
+        continue;
+      }
+
+      cell.className = 'cw-cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+
+      const owners = state.owners[r][c] || [];
+      const openHere = owners.filter((w) => state.found.has(w));
+
+      if (openHere.length) {
+        cell.textContent = ch;
+        // Если через клетку идёт ещё не найденное слово — это подсказка
+        const hinted = openHere.length < owners.length;
+        cell.classList.add(hinted ? 'is-hint' : 'is-open');
+        if (hinted) fresh.add(r + ':' + c);
+        if (state.justFound && owners.indexOf(state.justFound) !== -1) {
+          cell.classList.add('is-fresh');
+        }
+      }
+
+      rowEl.appendChild(cell);
     }
 
-    const isDone = state.found.has(row.word);
-    for (let k = 0; k < row.word.length; k++) {
-      const c = document.createElement('div');
-      c.className = 'cw-cell';
-      if (isDone) c.textContent = row.word[k];
-      el.appendChild(c);
-    }
-
-    const used = lead + row.word.length;
-    for (let k = used; k < state.cols; k++) {
-      const b = document.createElement('div');
-      b.className = 'cw-cell cw-cell--block';
-      el.appendChild(b);
-    }
-
-    box.appendChild(el);
+    box.appendChild(rowEl);
   }
+
+  if (fresh.size) state.lastHints = fresh.size;
 }
 
 /** Подгоняем размер клеток под экран. */
@@ -163,17 +188,40 @@ function fitCrossword() {
   const availH = area.clientHeight - 30;
   if (availW < 40 || availH < 40) { requestAnimationFrame(fitCrossword); return; }
 
-  const rows = box.children.length;
+  const rows = state.rows || box.children.length;
   const cols = state.cols;
-  const GAP = 3, ROWGAP = 6, PAD = 6;
+  const GAP = 3, ROWGAP = 3, PAD = 6;
 
-  let cell = Math.min(
+  // Клетка не должна быть меньше читаемой: если не влезает — область
+  // прокручивается (см. .crossword-area).
+  const MIN_CELL = 20;
+  const fits = Math.min(
     (availW - PAD * 2 - GAP * (cols - 1)) / cols,
     (availH - PAD * 2 - ROWGAP * (rows - 1)) / rows
   );
-  cell = Math.max(16, Math.floor(Math.min(cell, 46)));
+  const cell = Math.max(MIN_CELL, Math.floor(Math.min(fits, 44)));
 
   document.documentElement.style.setProperty('--cw-cell', cell + 'px');
+}
+
+/**
+ * Подсветить в сетке слова, которые начинаются с того, что набирается.
+ * Игрок видит, в какие ряды (и столбцы) стоит вписывать буквы.
+ */
+function markInputInGrid() {
+  document.querySelectorAll('#crossword .cw-cell.is-active').forEach((c) =>
+    c.classList.remove('is-active'));
+
+  const word = state.input;
+  if (!word) return;
+
+  const cells = document.querySelectorAll('#crossword .cw-cell[data-r]');
+  cells.forEach((cell) => {
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    const owners = (state.owners[r] || [])[c] || [];
+    const fits = owners.some((w) => w.length > word.length && w.startsWith(word));
+    cell.classList.toggle('is-active', fits && !cell.classList.contains('is-open'));
+  });
 }
 
 /* ---------------- Боковой список слов ---------------- */
@@ -202,7 +250,12 @@ function renderSideList() {
   html += '</div>';
 
   box.innerHTML = html;
+
+  // Пока бонусов нет, столбик зря отнимает место у кроссворда —
+  // прячем его. Кнопка-стрелка остаётся, список можно открыть.
+  if (!state.extras.length) state.sideOpen = false;
   box.classList.toggle('is-collapsed', !state.sideOpen);
+  $('#btn-side').classList.toggle('is-open', state.sideOpen);
   updateSideCounter();
 }
 
@@ -228,6 +281,9 @@ function wheelLetters() {
   return state.letters.slice();      // уровень собран — оставляем прежний вид
 }
 
+/** Сколько букв было на круге в прошлый раз — чтобы заметить упрощение. */
+let lastWheelCount = 0;
+
 function renderWheel() {
   const wheel = $('#wheel');
   wheel.querySelectorAll('.wheel__letter').forEach((el) => el.remove());
@@ -235,8 +291,21 @@ function renderWheel() {
   const letters = wheelLetters();
   const n = Math.max(1, letters.length);
 
-  // Размер колеса задаёт CSS; кнопки считаем от него же.
-  const room = Math.max(104, Math.min(window.innerWidth * 0.74, window.innerHeight * 0.34));
+  // Круг упростился — коротко мигаем, чтобы связь «нашёл слово →
+  // букв стало меньше» была видна.
+  if (lastWheelCount && n < lastWheelCount) {
+    wheel.classList.remove('is-shrunk');
+    void wheel.offsetWidth;                 // перезапуск анимации
+    wheel.classList.add('is-shrunk');
+    setTimeout(() => wheel.classList.remove('is-shrunk'), 700);
+  }
+  lastWheelCount = n;
+
+  // Размер колеса задаёт CSS (.wheel-area ограничивает по высоте).
+  // Держимся этих границ, иначе круг наезжает на поле ввода.
+  const box = $('.wheel-area');
+  const maxByHeight = Math.max(96, box ? box.clientHeight - 6 : 0);
+  const room = Math.floor(Math.min(window.innerWidth * 0.76, maxByHeight || 1e9));
   wheel.style.width = Math.round(room) + 'px';
   wheel.style.height = Math.round(room) + 'px';
 
@@ -275,13 +344,6 @@ function restWords() {
   return state.words.filter((w) => !state.found.has(w));
 }
 
-/** Длина самого короткого ненайденного слова — сколько слотов показывать. */
-function minWordLen() {
-  const rest = restWords();
-  if (!rest.length) return 0;
-  return rest.reduce((m, w) => Math.min(m, w.length), 99);
-}
-
 /** Длина самого длинного ненайденного слова — предел ввода. */
 function maxWordLen() {
   const rest = restWords();
@@ -290,6 +352,9 @@ function maxWordLen() {
 }
 
 function addLetter(ch) {
+  // Пока подсказка дописывается или слово вписывается — не мешаем
+  if (state.hintBusy || state.solveBusy) return;
+
   const maxLen = maxWordLen();
   if (state.input.length >= maxLen) {
     shakeWordbar();
@@ -300,6 +365,7 @@ function addLetter(ch) {
   state.input += ch;
   renderInput();
   markUsedLetters();
+  markInputInGrid();
   beep(480 + state.input.length * 24, 0.03);
   autoSubmit();
 }
@@ -313,9 +379,11 @@ function markUsedLetters() {
 
 function eraseLetter() {
   if (!state.input.length) return;
+  if (state.hintBusy || state.solveBusy) return;
   state.input = state.input.slice(0, -1);
   renderInput();
   markUsedLetters();
+  markInputInGrid();
   beep(320, 0.05);
 }
 
@@ -323,16 +391,19 @@ function clearInput() {
   state.input = '';
   renderInput();
   markUsedLetters();
+  markInputInGrid();
 }
 
 /**
- * Поле ввода: слотов столько, сколько букв в самом длинном слове уровня.
- * Количество не меняется — всегда одинаковый набор, пустые слоты видны,
- * поэтому сразу понятно, какие слова вообще можно ввести.
+ * Поле ввода: слотов столько, сколько букв в самом длинном слове
+ * всего уровня. Считаем по всем словам, а не по оставшимся, —
+ * иначе при каждой находке число слотов менялось бы на ходу
+ * и буквы «прыгали» под пальцем.
  */
 function renderInput() {
   const box = $('#wordbar');
-  const show = Math.max(maxWordLen(), 1);
+  const levelLen = state.words.reduce((m, w) => Math.max(m, w.length), 0);
+  const show = Math.max(levelLen || maxWordLen(), 1);
 
   let html = '';
   for (let i = 0; i < show; i++) {
@@ -390,11 +461,12 @@ function autoSubmit() {
   if (isTask && !isPrefix) { acceptWord(word); return; }
 
   if (isTask || isPrefix) {
-    // вдруг игрок допечатает продолжение
+    // Вдруг игрок допечатает продолжение. Молча ждём: в сетке
+    // подсвечены ряды, куда вписывать, — подсказка «Допиши слово»
+    // поверх кроссворда только мешала.
     submitTimer = setTimeout(() => {
       if (state.input !== word) return;
-      if (restWords().includes(word)) { acceptWord(word); return; }
-      if (isPrefix) toast('Допиши слово');
+      if (restWords().includes(word)) acceptWord(word);
     }, 650);
     return;
   }
@@ -432,6 +504,7 @@ function autoSubmit() {
 /** Задание из кроссворда: ставится в сетку, двигает прогресс. */
 function acceptWord(word) {
   state.found.add(word);
+  state.justFound = word;
   state.combo += 1;
   $('#hud-combo').textContent = state.combo;
 
@@ -439,14 +512,20 @@ function acceptWord(word) {
   save.coins += reward;
 
   clearInput();
+  state.lastHints = 0;
   rebuildCrossword();
+  setTimeout(() => { state.justFound = null; }, 900);
   renderSideList();         // список сбоку
   renderWheel();            // буквы найденного слова убираются с круга
   updateProgress();
   updateHud();
   persist();
 
-  showBanner(word);
+  // В одном баннере: само слово и сколько букв открылось в других.
+  showBanner(state.lastHints
+    ? word + ' · +' + state.lastHints + ' ' +
+      plural(state.lastHints, ['подсказка', 'подсказки', 'подсказок'])
+    : word);
   vibrate(16);
   beep(660, 0.08);
   setTimeout(() => beep(920, 0.1), 90);
@@ -459,8 +538,12 @@ function acceptWord(word) {
  * Сохраняем, чтобы не вводить повторно, и платим небольшой бонус.
  */
 function acceptExtra(word) {
+  const wasEmpty = state.extras.length === 0;
   state.extras.push(word);
   save.coins += CFG.extraReward;
+
+  // Первый бонус сам открывает список — дальше он уже не пустой
+  if (wasEmpty) state.sideOpen = true;
 
   clearInput();
   renderSideList();
@@ -498,7 +581,9 @@ function updateHud() {
 
 function checkWin() {
   if (state.found.size < state.words.length) return;
+  if (state.won) return;              // победа засчитывается один раз
 
+  state.won = true;
   const bonus = CFG.levelBonus(save.level);
   save.coins += bonus;
   save.level += 1;
@@ -538,6 +623,8 @@ function startLevel(fresh) {
 
   const layout = buildCrossword(words);
   state.words = words;
+  state.grid = layout.grid;
+  state.owners = layout.owners;
   state.rows = layout.rows;
   state.cols = layout.cols;
   state.found = new Set();
@@ -546,6 +633,7 @@ function startLevel(fresh) {
   state.input = '';
   state.combo = 0;
   state.hintsUsed = 0;
+  state.won = false;
 
   $('#hud-level').textContent = save.level;
   $('#hud-combo').textContent = '0';
@@ -563,6 +651,9 @@ function startLevel(fresh) {
 
 function saveCurrent() {
   if (!state.words.length) return;
+  // Собранный уровень не сохраняем: номер уже увеличен, и при
+  // возврате «Играть» игрок получил бы полностью заполненное поле.
+  if (state.won) { save.current = null; persist(); return; }
   save.current = {
     level: save.level,
     difficulty: save.difficulty,
@@ -577,6 +668,8 @@ function resumeLevel() {
   const cur = save.current;
   const layout = buildCrossword(cur.words);
   state.words = cur.words;
+  state.grid = layout.grid;
+  state.owners = layout.owners;
   state.rows = layout.rows;
   state.cols = layout.cols;
   state.found = new Set(cur.found);
@@ -585,6 +678,7 @@ function resumeLevel() {
   state.input = '';
   state.combo = 0;
   state.hintsUsed = 0;
+  state.won = false;
 
   $('#hud-level').textContent = cur.level;
   $('#hud-combo').textContent = '0';
@@ -601,13 +695,22 @@ function resumeLevel() {
 
 /* ---------------- Подсказки (за монеты) ---------------- */
 
-/** Подсказка: добавляет правильную букву в набор. */
+/**
+ * Подсказка-буква: подсказывает букву настоящего слова уровня,
+ * а не случайную. Берём то слово, которое продолжает текущий ввод,
+ * иначе — самое частое из оставшихся (оно в начале списка).
+ * Пишем букву на её место в слове, чтобы подсказка всегда
+ * приближала к цели, а не ломала начатый ввод.
+ */
 function useHint() {
   if (!state.words.length) return;
-  const rest = state.words.filter((w) => !state.found.has(w));
+  // Пока вписывается слово или дописывается предыдущая подсказка —
+  // не вмешиваемся: набранное всё равно перезапишется.
+  if (state.hintBusy || state.solveBusy) return;
+
+  const rest = restWords();
   if (!rest.length) { toast('Все слова найдены'); return; }
 
-  // Проверка монет
   if (save.coins < CFG.hintCost) {
     toast('Недостаточно монет! Нужно ' + CFG.hintCost);
     beep(180, 0.15, 'square');
@@ -615,63 +718,57 @@ function useHint() {
     return;
   }
 
-  // Ищем слово, которое можно продолжить текущим вводом
-  let candidates = rest.filter((w) => w.startsWith(state.input));
-  let word;
-  
-  // Если ввод является началом слова — берем первое такое слово
-  if (candidates.length > 0) {
-    // Сортируем по частотности (самые первые в массиве — самые частые)
-    word = candidates[0];
-  } else {
-    // Иначе берём случайное ненайденное слово
-    word = pick(rest, Math.random);
+  // Слово-продолжение текущего ввода; иначе — самое частое оставшееся
+  const candidates = rest.filter((w) => w.startsWith(state.input));
+  const word = candidates.length ? candidates[0] : rest[0];
+
+  // Позиция первой буквы, которой ещё нет во вводе
+  let pos = -1;
+  for (let i = 0; i < word.length; i++) {
+    if (!state.input.includes(word[i])) { pos = i; break; }
   }
 
-  // Находим первую букву этого слова, которой ещё нет в наборе
-  let hintLetter = null;
-  for (const ch of word) {
-    if (!state.input.includes(ch)) {
-      hintLetter = ch;
-      break;
-    }
-  }
-
-  if (!hintLetter) {
-    // Все буквы слова уже в наборе — говорим слово
+  if (pos < 0) {
+    // Все буквы слова уже есть во вводе — подсказываем целиком
     toast('Слово: ' + word);
     beep(760, 0.09);
     return;
   }
 
-  // Списываем монеты
   save.coins -= CFG.hintCost;
   state.hintsUsed += 1;
+  state.hintBusy = true;
 
-  // Добавляем букву в набор
-  state.input += hintLetter;
+  // Ставим букву на её место: начатый ввод не портим
+  state.input = word.slice(0, pos) + word[pos] + state.input.slice(pos);
   renderInput();
   markUsedLetters();
 
   updateHud();
   persist();
 
-  // Показываем, из какого слова взята буква
-  toast('+Буква «' + hintLetter.toUpperCase() + '» из слова «' + word + '» (' + CFG.hintCost + ' ★)');
+  toast('+Буква «' + word[pos].toUpperCase() + '» · ' + CFG.hintCost + ' ★');
   beep(760, 0.09);
   vibrate(10);
 
-  // Автопроверка слова
-  autoSubmit();
+  // Слово могло собраться целиком — засчитываем, но не раньше,
+  // чем игрок увидит букву, поэтому проверка отложена.
+  setTimeout(() => {
+    state.hintBusy = false;
+    if (state.input && restWords().includes(state.input)) acceptWord(state.input);
+  }, 700);
 }
 
 /** Показать слово целиком: вписываем в кроссворд. */
 function useSolve() {
   if (!state.words.length) return;
-  const rest = state.words.filter((w) => !state.found.has(w));
+  // Пока вписывается слово или дописывается подсказка-буква —
+  // не начинаем вторую анимацию, она бы перемешала ввод.
+  if (state.solveBusy || state.hintBusy) return;
+
+  const rest = restWords();
   if (!rest.length) { toast('Все слова найдены'); return; }
 
-  // Проверка монет
   if (save.coins < CFG.solveCost) {
     toast('Недостаточно монет! Нужно ' + CFG.solveCost);
     beep(180, 0.15, 'square');
@@ -681,6 +778,10 @@ function useSolve() {
 
   save.coins -= CFG.solveCost;
   state.hintsUsed += 1;
+  state.solveBusy = true;
+  updateHud();
+  persist();
+
   const word = pick(rest, Math.random);
   showBanner(word);
   beep(880, 0.1);
@@ -694,12 +795,12 @@ function useSolve() {
     renderInput();
     if (i >= word.length) {
       clearInterval(timer);
-      setTimeout(() => acceptWord(word), 300);
+      setTimeout(() => {
+        state.solveBusy = false;
+        acceptWord(word);
+      }, 300);
     }
   }, 130);
-
-  updateHud();
-  persist();
 }
 
 function toggleSound() {
@@ -762,11 +863,18 @@ $('#btn-side').addEventListener('click', () => {
 // клавиатура — для отладки на компьютере
 document.addEventListener('keydown', (e) => {
   if (!document.querySelector('#screen-game').classList.contains('is-active')) return;
+  // Пока открыта модалка, буквы не набираем — иначе слово дописывается
+  // под надписью «Как играть».
+  if (document.querySelector('.modal:not([hidden])')) return;
   if (/^[а-яёА-ЯЁ]$/i.test(e.key)) { addLetter(e.key.toLowerCase()); e.preventDefault(); }
   else if (e.key === 'Backspace') { eraseLetter(); e.preventDefault(); }
 });
 
 $('#btn-difficulty').addEventListener('click', () => {
+  // Подписи берём из DIFFICULTY, чтобы цифры не расходились с игрой
+  document.querySelectorAll('[data-hint]').forEach((el) => {
+    el.textContent = difficultyHint(el.dataset.hint);
+  });
   document.querySelectorAll('.diff').forEach((b) =>
     b.classList.toggle('is-active', b.dataset.diff === save.difficulty));
   openModal('#modal-diff');

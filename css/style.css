@@ -315,52 +315,82 @@ html, body {
   justify-content: center;
   position: relative;
   z-index: 1;
-  overflow: hidden;
+  /* На узких экранах сетка может не поместиться по высоте —
+     лучше прокрутка, чем клетки в 10 пикселей */
+  overflow: auto;
+  scrollbar-width: none;
+  padding: 4px 0;
 }
+.crossword-area::-webkit-scrollbar { display: none; }
 
 .crossword {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   align-items: center;
+  margin: auto;
 }
 
 .cw-row {
   display: flex;
   gap: 3px;
-  padding: 3px;
-  border-radius: 12px;
-  background: rgba(255,255,255,.08);
-  transition: background .2s ease;
 }
-.cw-row.is-done { background: rgba(67,209,122,.18); }
 
 .cw-cell {
   width: var(--cw-cell);
   height: var(--cw-cell);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--tile);
   color: var(--ink);
   display: grid;
   place-items: center;
   font-weight: 900;
-  font-size: calc(var(--cw-cell) * .56);
+  font-size: calc(var(--cw-cell) * .58);
   text-transform: uppercase;
   box-shadow: inset 0 0 0 2px var(--tile-line);
+  transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.cw-cell--block {
-  background: var(--block);
+/* Пустая клетка вне слов — фон сетки */
+.cw-cell--void {
+  background: transparent;
   box-shadow: none;
-  opacity: .55;
 }
 
-.cw-row.is-done .cw-cell {
+/* Найденное слово */
+.cw-cell.is-open {
   background: var(--good);
   animation: pop .35s cubic-bezier(.2, 1.5, .4, 1);
 }
 
+/*
+ * Буква, открытая через пересечение с найденным словом.
+ * Это подсказка для ещё не отгаданного слова — выделяем её,
+ * чтобы игрок заметил, что в другом слове появилась буква.
+ */
+.cw-cell.is-hint {
+  background: var(--accent);
+  color: #5a3200;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.55), 0 0 10px rgba(255,210,63,.45);
+}
+
+/* Только что открытое слово */
+.cw-cell.is-fresh {
+  animation: pop .4s cubic-bezier(.2, 1.5, .4, 1), glow .9s ease;
+}
+
+/* Клетки слов, подходящих под текущий ввод */
+.cw-cell.is-active {
+  background: rgba(255,255,255,.26);
+  transform: scale(1.06);
+}
+
 @keyframes pop { from { transform: scale(.4); } to { transform: scale(1); } }
+
+@keyframes glow {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--tile-line); }
+  40%      { box-shadow: inset 0 0 0 3px #fff, 0 0 16px rgba(255,255,255,.6); }
+}
 
 /* ---------------- Лента ---------------- */
 
@@ -401,15 +431,17 @@ html, body {
 
 .wordbar__slots {
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
   justify-content: center;
-  max-width: 74%;
+  max-width: 84%;
 }
 
 .slot {
   width: 34px;
   height: 42px;
+  flex: 0 1 34px;
+  min-width: 0;
   border-radius: 9px;
   background: rgba(255,255,255,.14);
   border: 2px solid rgba(255,255,255,.22);
@@ -419,6 +451,12 @@ html, body {
   font-size: 22px;
   text-transform: uppercase;
   color: #fff;
+}
+
+/* Узкий экран: слоты чуть меньше, чтобы всегда были в одну строку */
+@media (max-width: 359px) {
+  .slot { flex-basis: 29px; height: 38px; font-size: 19px; }
+  .wordbar__slots { gap: 3px; max-width: 86%; }
 }
 .slot.has-letter {
   background: linear-gradient(160deg, var(--accent), var(--accent-2));
@@ -449,20 +487,23 @@ html, body {
 /* ---------------- Колесо с буквами ---------------- */
 
 .wheel-area {
-  flex: 0 1 auto;
-  min-height: 108px;
+  flex: 0 0 auto;
+  min-height: 96px;
+  max-height: min(32vh, 220px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2px 0;
   position: relative;
   z-index: 2;
+  overflow: hidden;
 }
 
 .wheel {
   position: relative;
-  width: min(76vw, 36vh);
-  height: min(76vw, 36vh);
+  width: min(76vw, 32vh);
+  height: min(76vw, 32vh);
+  flex: 0 0 auto;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 42%, #fffdf5 0%, #fdf6e3 62%, #efe2c4 100%);
   box-shadow: 0 8px 20px rgba(0,0,0,.4), inset 0 0 0 3px rgba(255,255,255,.7);
@@ -487,6 +528,22 @@ html, body {
 }
 .wheel__letter:active { transform: scale(.9); background: #ffe9a8; }
 .wheel__letter.is-used { background: var(--good); }
+
+/*
+ * Круг упростился: после находки слова часть букв исчезает.
+ * Короткая вспышка показывает, что круг стал свободнее.
+ */
+.wheel.is-shrunk {
+  animation: wheelPulse .7s ease;
+  border-radius: 50%;
+}
+
+@keyframes wheelPulse {
+  0%   { box-shadow: 0 8px 20px rgba(0,0,0,.4), inset 0 0 0 3px rgba(255,255,255,.7); }
+  35%  { box-shadow: 0 8px 20px rgba(0,0,0,.4), inset 0 0 0 6px var(--accent),
+                      0 0 24px rgba(255,210,63,.75); }
+  100% { box-shadow: 0 8px 20px rgba(0,0,0,.4), inset 0 0 0 3px rgba(255,255,255,.7); }
+}
 
 /* ---------------- Нижний ряд ---------------- */
 

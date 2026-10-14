@@ -62,14 +62,14 @@
       <aside class="side" id="side-words"></aside>
       <button class="side__toggle" id="btn-side" aria-label="Показать список слов"></button>
 
-      <!-- ПУСТОЙ КРОССВОРД: сюда встают найденные слова -->
+      <!-- КРОССВОРД С ПЕРЕСЕЧЕНИЯМИ: слова пересекаются, находка открывает буквы -->
       <div class="crossword-area">
         <div class="crossword" id="crossword"></div>
         <div class="ribbon" id="ribbon"><span id="ribbon-text">Слово!</span></div>
       </div>
     </div>
 
-    <!-- Набранное слово: слотов столько, сколько букв в самом коротком задании -->
+    <!-- Набранное слово: слотов столько, сколько букв в самом длинном слове уровня -->
     <div class="wordbar">
       <div class="wordbar__slots" id="wordbar"></div>
       <button class="wordbar__btn" id="btn-erase" aria-label="Стереть букву">⌫</button>
@@ -122,9 +122,9 @@
   <div class="modal" id="modal-diff" hidden>
     <div class="modal__box">
       <h3>Сложность</h3>
-      <button class="diff" data-diff="easy">Легко<span>4 слова по 3–4 буквы</span></button>
-      <button class="diff" data-diff="normal">Средняя<span>5 слов по 4–5 букв</span></button>
-      <button class="diff" data-diff="hard">Сложно<span>6 слов по 5–8 букв</span></button>
+      <button class="diff" data-diff="easy">Легко<span data-hint="easy"></span></button>
+      <button class="diff" data-diff="normal">Средняя<span data-hint="normal"></span></button>
+      <button class="diff" data-diff="hard">Сложно<span data-hint="hard"></span></button>
       <button class="btn btn--ghost" data-close>Закрыть</button>
     </div>
   </div>
@@ -133,14 +133,15 @@
     <div class="modal__box">
       <h3>Как играть</h3>
       <ul class="how">
-        <li>Сверху — пустой кроссворд. Сколько клеток в ряду, столько букв в слове.</li>
-        <li>Слева — только <b>бонусы</b>: слова из тех же букв, что ты уже нашёл.</li>
+        <li>Сверху — кроссворд из настоящих пересечений. Ряды и столбцы образуют слова.</li>
+        <li>Отгадал слово — в нём открылись зелёные буквы. <b>Жёлтые буквы</b> — из
+            пересечений: они подсказывают другие, ещё не отгаданные слова.</li>
         <li>Снизу круг с буквами. Тапай по ним — буквы складываются в слово.</li>
-        <li>Слотов столько, сколько букв в самом коротком задании.</li>
-        <li>Слово совпало — сразу встаёт в кроссворд.</li>
+        <li>Слотов столько, сколько букв в самом длинном слове уровня.</li>
+        <li>Пока набираешь слово, подходящие ряды подсвечиваются в сетке.</li>
         <li>Из тех же букв можно собрать другие слова — они идут в «Бонусы» слева.</li>
-        <li><b>Буква</b> — первая буква ненайденного слова.</li>
-        <li><b>Слово</b> — целиком показывает одно из заданий.</li>
+        <li><b>Буква</b> — подсказывает следующую букву настоящего слова (50 ★).</li>
+        <li><b>Слово</b> — целиком вписывает одно из заданий (150 ★).</li>
         <li><b>Звук</b> — включить/выключить звук.</li>
       </ul>
       <button class="btn btn--primary" data-close>Понятно</button>
